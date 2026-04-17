@@ -1,9 +1,9 @@
-ARG postgres_image_version=16.2
+ARG postgres_image_version=18
 FROM docker.io/postgres:${postgres_image_version} AS builder
-ARG postgres_version=16
-ARG boost_dev_version=1.74
+ARG postgres_version=18
+ARG boost_dev_version=1.88
 ARG rdkit_git_url=https://github.com/rdkit/rdkit.git
-ARG rdkit_git_ref=Release_2024_03_1
+ARG rdkit_git_ref=Release_2026_03_1
 
 RUN apt-get update \
     && apt-get install -yq --no-install-recommends \
@@ -11,7 +11,7 @@ RUN apt-get update \
         curl \
         gnupg \
         lsb-release \
-    && curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
+    && curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor | tee /etc/apt/trusted.gpg.d/ACCC4CF8.asc \
     && echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
 
 RUN apt-get update \
@@ -20,6 +20,8 @@ RUN apt-get update \
         cmake \
         git \
         coreutils \
+        libboost-program-options${boost_dev_version}-dev \
+        libboost-random${boost_dev_version}-dev \
         libboost-iostreams${boost_dev_version}-dev \
         libboost-regex${boost_dev_version}-dev \
         libboost-serialization${boost_dev_version}-dev \
@@ -62,7 +64,7 @@ RUN cmake \
     -D RDK_INSTALL_INTREE=OFF \
     -D CMAKE_INSTALL_PREFIX=/opt/RDKit \
     -D CMAKE_BUILD_TYPE=Release \
-    . 
+    .
 RUN make -j$(nproc)
 
 USER root
@@ -81,8 +83,8 @@ RUN initdb -D /opt/RDKit-build/pgdata \
 
 
 FROM docker.io/postgres:${postgres_image_version}
-ARG postgres_version=16
-ARG boost_version=1.74.0
+ARG postgres_version=18
+ARG boost_version=1.88
 
 RUN apt-get update \
     && apt-get install -yq --no-install-recommends \
@@ -97,4 +99,3 @@ RUN apt-get update \
 
 COPY --from=builder /usr/share/postgresql/${postgres_version}/extension/*rdkit* /usr/share/postgresql/${postgres_version}/extension/
 COPY --from=builder /usr/lib/postgresql/${postgres_version}/lib/rdkit.so /usr/lib/postgresql/${postgres_version}/lib/rdkit.so
-
