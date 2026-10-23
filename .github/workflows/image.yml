@@ -2,9 +2,6 @@ name: image
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - pg18-rdkit-2026_03_1
 
 permissions: {}
 
