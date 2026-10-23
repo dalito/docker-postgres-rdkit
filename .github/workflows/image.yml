@@ -10,6 +10,8 @@ env:
 
 jobs:
   build-push:
+    # Other refs carry other Dockerfiles; building them would overwrite this tag.
+    if: github.ref == 'refs/heads/pg18-rdkit-2026_03_1'
     runs-on: ubuntu-latest
     permissions:
       contents: read
