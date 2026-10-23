@@ -1,0 +1,45 @@
+name: image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - pg18-rdkit-2026_03_1
+
+permissions: {}
+
+env:
+  IMAGE: ghcr.io/dalito/postgres-rdkit:pg18-rdkit_2026_03_1
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build
+        run: |
+          docker build -f Dockerfile \
+              --platform linux/amd64 \
+              --build-arg postgres_image_version=18 \
+              --build-arg postgres_version=18 \
+              --build-arg boost_dev_version=1.88 \
+              --build-arg boost_version=1.88 \
+              --build-arg rdkit_git_ref=Release_2026_03_1 \
+              --tag "$IMAGE" .
+
+      - name: Push
+        run: docker push "$IMAGE"
+
+      - name: Show pushed digest
+        run: docker buildx imagetools inspect "$IMAGE"
