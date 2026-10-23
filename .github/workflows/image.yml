@@ -6,11 +6,12 @@ on:
 permissions: {}
 
 env:
-  IMAGE: ghcr.io/dalito/postgres-rdkit:pg18-rdkit_2026_03_1
+  REPOSITORY: ghcr.io/dalito/postgres-rdkit
+  RDKIT_GIT_REF: Release_2026_03_1
 
 jobs:
   build-push:
-    # Other refs carry other Dockerfiles; building them would overwrite this tag.
+    # Other refs carry other Dockerfiles.
     if: github.ref == 'refs/heads/pg18-rdkit-2026_03_1'
     runs-on: ubuntu-latest
     permissions:
@@ -30,15 +31,43 @@ jobs:
         run: |
           docker build -f Dockerfile \
               --platform linux/amd64 \
-              --build-arg postgres_image_version=18 \
               --build-arg postgres_version=18 \
               --build-arg boost_dev_version=1.88 \
               --build-arg boost_version=1.88 \
-              --build-arg rdkit_git_ref=Release_2026_03_1 \
-              --tag "$IMAGE" .
+              --build-arg rdkit_git_ref="$RDKIT_GIT_REF" \
+              --tag postgres-rdkit:build .
+
+      # The tag names the PostgreSQL release the image carries, read from the
+      # image itself, so a new base gets a new tag.
+      - name: Name the image
+        id: name
+        run: |
+          pg_version=$(docker run --rm --entrypoint postgres postgres-rdkit:build -V | awk '{print $3}')
+          echo "image=$REPOSITORY:pg${pg_version}-rdkit_${RDKIT_GIT_REF#Release_}" >> "$GITHUB_OUTPUT"
+
+      # Consumers pin a tag's digest; overwriting the tag would leave its name
+      # on an image they do not run.
+      - name: Refuse to overwrite a published tag
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+        run: |
+          if found=$(docker buildx imagetools inspect "$IMAGE" 2>&1); then
+            echo "::error::$IMAGE is already published"
+            exit 1
+          fi
+          case "$found" in
+            *"not found"*) ;;
+            *) echo "::error::cannot tell whether $IMAGE exists: $found"; exit 1 ;;
+          esac
 
       - name: Push
-        run: docker push "$IMAGE"
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+        run: |
+          docker tag postgres-rdkit:build "$IMAGE"
+          docker push "$IMAGE"
 
       - name: Show pushed digest
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
         run: docker buildx imagetools inspect "$IMAGE"

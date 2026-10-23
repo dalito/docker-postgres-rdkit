@@ -1,5 +1,5 @@
-ARG postgres_image_version=18
-FROM docker.io/postgres:${postgres_image_version} AS builder
+# Pinned by digest so a rebuild starts from the same base; Dependabot moves it.
+FROM docker.io/postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6 AS builder
 ARG postgres_version=18
 ARG boost_dev_version=1.88
 ARG rdkit_git_url=https://github.com/rdkit/rdkit.git
@@ -82,7 +82,7 @@ RUN initdb -D /opt/RDKit-build/pgdata \
   && pg_ctl -D /opt/RDKit-build/pgdata stop
 
 
-FROM docker.io/postgres:${postgres_image_version}
+FROM docker.io/postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
 ARG postgres_version=18
 ARG boost_version=1.88
 
