@@ -1,0 +1,21 @@
+# The PostgreSQL base image and the workflow's actions are pinned by digest and
+# commit SHA; Dependabot proposes their updates. Read from the default branch.
+version: 2
+updates:
+- package-ecosystem: docker
+  directory: "/"
+  schedule:
+    interval: monthly
+  assignees:
+  - "dalito"
+  # A PostgreSQL major needs a data-directory upgrade in every consumer.
+  ignore:
+  - dependency-name: "postgres"
+    update-types: ["version-update:semver-major"]
+
+- package-ecosystem: github-actions
+  directory: "/"
+  schedule:
+    interval: monthly
+  assignees:
+  - "dalito"

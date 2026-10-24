@@ -1,44 +1,123 @@
 name: image
 
+# A pull request builds and smoke-tests the image. Pushing a git tag named like
+# the image tag (`18.6-rdkit-2026.09.1-1`) also publishes it under that tag.
 on:
-  workflow_dispatch:
+  pull_request:
+  push:
+    tags:
+      - "*-rdkit-*"
 
 permissions: {}
 
+# A new push to a pull request supersedes its running build; a release
+# build is never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
-  IMAGE: ghcr.io/dalito/postgres-rdkit:pg18-rdkit_2026_03_1
+  REPOSITORY: ghcr.io/dalito/postgres-rdkit
 
 jobs:
-  build-push:
-    # Other refs carry other Dockerfiles; building them would overwrite this tag.
-    if: github.ref == 'refs/heads/pg18-rdkit-2026_03_1'
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
+      # Consumers pin a tag's digest; overwriting the tag would leave its name
+      # on an image they do not run. Checked first to skip a doomed build.
+      - name: Refuse to overwrite a published tag
+        if: github.ref_type == 'tag'
+        env:
+          IMAGE: ${{ env.REPOSITORY }}:${{ github.ref_name }}
+        run: |
+          if found=$(docker buildx imagetools inspect "$IMAGE" 2>&1); then
+            echo "::error::$IMAGE is already published"
+            exit 1
+          fi
+          case "$found" in
+            *"not found"*) ;;
+            *) echo "::error::cannot tell whether $IMAGE exists: $found"; exit 1 ;;
+          esac
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # The Dockerfile's ARG defaults are the only place the versions are set.
+      - name: Build
+        env:
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          docker build -f Dockerfile \
+              --platform linux/amd64 \
+              --label org.opencontainers.image.source="$REPOSITORY_URL" \
+              --label org.opencontainers.image.revision="$GITHUB_SHA" \
+              --label org.opencontainers.image.version="$VERSION" \
+              --tag postgres-rdkit:build .
+
+      # PostgreSQL is read from the built image, RDKit from the Dockerfile.
+      - name: Read versions
+        id: versions
+        run: |
+          pg_version=$(docker run --rm --entrypoint postgres postgres-rdkit:build -V | awk '{print $3}')
+          rdkit_ref=$(sed -n 's/^ARG rdkit_git_ref=//p' Dockerfile)
+          rdkit_version=$(echo "${rdkit_ref#Release_}" | tr _ .)
+          echo "pg=$pg_version" >> "$GITHUB_OUTPUT"
+          echo "rdkit=$rdkit_version" >> "$GITHUB_OUTPUT"
+
+      # The runtime stage has only what the builder copied over; loading the
+      # extension catches a missing shared library.
+      - name: Smoke-test the cartridge
+        env:
+          RDKIT_VERSION: ${{ steps.versions.outputs.rdkit }}
+        run: |
+          docker run -d --name smoke -e POSTGRES_HOST_AUTH_METHOD=trust postgres-rdkit:build
+          # The entrypoint's init server listens on the socket only, so TCP
+          # readiness means the final server is up.
+          for _ in $(seq 60); do
+            docker exec smoke pg_isready -q -h 127.0.0.1 && break
+            sleep 1
+          done
+          docker exec smoke psql -h 127.0.0.1 -U postgres -c "CREATE EXTENSION rdkit;"
+          found=$(docker exec smoke psql -h 127.0.0.1 -U postgres -tAc \
+            "SELECT rdkit_toolkit_version();")
+          docker rm -f smoke
+          if [ "$found" != "$RDKIT_VERSION" ]; then
+            echo "::error::cartridge reports RDKit '$found', the Dockerfile builds $RDKIT_VERSION"
+            exit 1
+          fi
+
+      # Tag format: <PostgreSQL>-rdkit-<RDKit>-<revision>. Dependabot orders it
+      # as one version; the revision counts rebuilds of the same pair.
+      - name: Check the tag names what was built
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+          PG_VERSION: ${{ steps.versions.outputs.pg }}
+          RDKIT_VERSION: ${{ steps.versions.outputs.rdkit }}
+        run: |
+          expected="$PG_VERSION-rdkit-$RDKIT_VERSION-"
+          revision=${TAG#"$expected"}
+          if [ "$revision" = "$TAG" ] || ! echo "$revision" | grep -Eq '^[1-9][0-9]*$'; then
+            echo "::error::tag $TAG does not match the build; expected ${expected}<revision>"
+            exit 1
+          fi
+
       - name: Log in to ghcr.io
+        if: github.ref_type == 'tag'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
-      - name: Build
-        run: |
-          docker build -f Dockerfile \
-              --platform linux/amd64 \
-              --build-arg postgres_image_version=18 \
-              --build-arg postgres_version=18 \
-              --build-arg boost_dev_version=1.88 \
-              --build-arg boost_version=1.88 \
-              --build-arg rdkit_git_ref=Release_2026_03_1 \
-              --tag "$IMAGE" .
-
       - name: Push
-        run: docker push "$IMAGE"
-
-      - name: Show pushed digest
-        run: docker buildx imagetools inspect "$IMAGE"
+        if: github.ref_type == 'tag'
+        env:
+          IMAGE: ${{ env.REPOSITORY }}:${{ github.ref_name }}
+        run: |
+          docker tag postgres-rdkit:build "$IMAGE"
+          docker push "$IMAGE"
+          docker buildx imagetools inspect "$IMAGE"
