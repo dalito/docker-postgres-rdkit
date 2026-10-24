@@ -27,6 +27,7 @@ RUN apt-get update \
         libboost-serialization${boost_dev_version}-dev \
         libboost-system${boost_dev_version}-dev \
         libeigen3-dev \
+        libexpat1-dev \
         libfreetype6-dev \
         postgresql-server-dev-${postgres_version}=$(postgres -V | awk '{print $3}')\* \
         zlib1g-dev \
@@ -92,6 +93,7 @@ RUN apt-get update \
         libboost-regex${boost_version} \
         libboost-serialization${boost_version} \
         libboost-system${boost_version} \
+        libexpat1 \
         libfreetype6 \
         zlib1g \
     && apt-get clean \
