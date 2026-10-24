@@ -24,7 +24,7 @@ Every pull request builds the image, runs the RDKit test suite against the cartr
 
 ## Releasing
 
-After the change is merged, tag the merge commit on `master` with the image tag and push the tag:
+After the change is merged, tag the merge commit on `main` with the image tag and push the tag:
 
 ```bash
 git tag 18.6-rdkit-2026.09.1-1
