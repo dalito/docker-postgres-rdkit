@@ -3,7 +3,7 @@ FROM docker.io/postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8
 ARG postgres_version=18
 ARG boost_dev_version=1.88
 ARG rdkit_git_url=https://github.com/rdkit/rdkit.git
-ARG rdkit_git_ref=Release_2026_03_1
+ARG rdkit_git_ref=Release_2026_09_1
 
 RUN apt-get update \
     && apt-get install -yq --no-install-recommends \
