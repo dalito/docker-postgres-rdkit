@@ -1,0 +1,42 @@
+name: rdkit-release
+
+# Dependabot cannot follow the RDKit git ref in the Dockerfile, so this opens an
+# issue when RDKit publishes a newer release than the one built.
+on:
+  schedule:
+    - cron: "17 5 1 * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The highest release tag, not GitHub's "latest": a patch release for an
+      # older series can be published after a newer series.
+      - name: Open an issue for a newer RDKit release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current=$(sed -n 's/^ARG rdkit_git_ref=//p' Dockerfile)
+          newest=$(gh api repos/rdkit/rdkit/releases \
+            --jq '.[] | select((.draft or .prerelease) | not) | .tag_name' \
+            | grep '^Release_' | sort -V | tail -n 1)
+          echo "Dockerfile builds $current; newest RDKit release is $newest"
+          if [ "$(printf '%s\n%s\n' "$current" "$newest" | sort -V | tail -n 1)" = "$current" ]; then
+            exit 0
+          fi
+          title="RDKit $newest is available"
+          if [ -n "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[].number')" ]; then
+            echo "An open issue already reports $newest"
+            exit 0
+          fi
+          gh issue create --title "$title" --body "The Dockerfile builds \`$current\`. Release notes: https://github.com/rdkit/rdkit/releases/tag/$newest"

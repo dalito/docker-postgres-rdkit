@@ -8,6 +8,10 @@ updates:
     interval: monthly
   assignees:
   - "dalito"
+  # A PostgreSQL major needs a data-directory upgrade in every consumer.
+  ignore:
+  - dependency-name: "postgres"
+    update-types: ["version-update:semver-major"]
 
 - package-ecosystem: github-actions
   directory: "/"
