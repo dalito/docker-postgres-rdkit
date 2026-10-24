@@ -76,8 +76,9 @@ jobs:
             docker exec smoke pg_isready -q -h 127.0.0.1 && break
             sleep 1
           done
+          docker exec smoke psql -h 127.0.0.1 -U postgres -c "CREATE EXTENSION rdkit;"
           found=$(docker exec smoke psql -h 127.0.0.1 -U postgres -tAc \
-            "CREATE EXTENSION rdkit; SELECT rdkit_toolkit_version();")
+            "SELECT rdkit_toolkit_version();")
           docker rm -f smoke
           if [ "$found" != "$RDKIT_VERSION" ]; then
             echo "::error::cartridge reports RDKit '$found', the Dockerfile builds $RDKIT_VERSION"
